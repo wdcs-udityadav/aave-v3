@@ -24,29 +24,22 @@ contract AaveV3 {
         pool = Pool(provider.getPool());
     }
 
-    function supply(address _asset, uint256 _amount, address _behalfOf) external {
-        uint16 refCode = 0;
-        IERC20(_asset).safeTransferFrom(_behalfOf, address(this), _amount);
-        IERC20(_asset).safeApprove(address(pool), _amount);
-        pool.supply(_asset, _amount, _behalfOf, refCode);
-    }
-
-    function supplySelf(address _asset, uint256 _amount) external {
-        uint16 refCode = 0;
-        // IERC20(_asset).safeTransferFrom(msg.sender, address(this), _amount);
-        IERC20(_asset).safeApprove(address(pool), _amount);
-        pool.supply(_asset, _amount, msg.sender, refCode);
-    }
-
-    // function getUserAccountData(address _user) external view returns (uint256, uint256, uint256, uint256) {
+     // function getUserAccountData(address _user) external view returns (uint256, uint256, uint256, uint256) {
     //     (uint256 totalCollateralETH, uint256 totalDebtETH, uint256 availableBorrowsETH,,, uint256 healthFactor) =
     //         pool.getUserAccountData(_user);
     //     return (totalCollateralETH, availableBorrowsETH, totalDebtETH, healthFactor);
     // }
 
-    function getReserveData(address _asset) public view returns (address, address) {
+    function getReserveData(address _asset) public view returns (address, address,address) {
         DataTypes.ReserveData memory reserveData = pool.getReserveData(_asset);
-        return (reserveData.aTokenAddress, reserveData.variableDebtTokenAddress);
+        return (reserveData.aTokenAddress, reserveData.stableDebtTokenAddress,reserveData.variableDebtTokenAddress);
+    }
+
+    function supply(address _asset, uint256 _amount, address _behalfOf) external {
+        uint16 refCode = 0;
+        IERC20(_asset).safeTransferFrom(_behalfOf, address(this), _amount);
+        IERC20(_asset).safeApprove(address(pool), _amount);
+        pool.supply(_asset, _amount, _behalfOf, refCode);
     }
 
     function withdraw(address _asset, address _aToken, uint256 _aTokenBalance, uint256 _amount, address _to) external {
@@ -56,10 +49,10 @@ contract AaveV3 {
         pool.withdraw(_asset, _amount, _to);
     }
 
-    function borrow(address _asset, uint256 _amount) external {
+    function borrow(address _asset, uint256 _amount, address _behalfOf) external {
         uint256 interestRateMode = 2;
         uint16 referralCode = 0;
-        pool.borrow(_asset, _amount, interestRateMode, referralCode, address(this));
+        pool.borrow(_asset, _amount, interestRateMode, referralCode, _behalfOf);
     }
 
     // function borrow(address aToken, uint256 atokensDeposited,address _asset, uint256 _amount, address _behalfOf) external {

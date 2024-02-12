@@ -7,7 +7,7 @@ import {AaveV3} from "../src/AaveV3.sol";
 import "aaveV3-core/contracts/protocol/configuration/PoolAddressesProviderRegistry.sol";
 import "aaveV3-core/contracts/protocol/configuration/PoolAddressesProvider.sol";
 import "aaveV3-core/contracts/protocol/pool/Pool.sol";
-
+import "aave-v3-core/contracts/interfaces/ICreditDelegationToken.sol";
 import "aaveV3-core/contracts/dependencies/openzeppelin/contracts/IERC20.sol";
 import "aaveV3-core/contracts/dependencies/openzeppelin/contracts/SafeERC20.sol";
 
@@ -16,6 +16,7 @@ contract AaveV3Test is Test {
 
     AaveV3 public aaveV3;
     IERC20 constant DAI = IERC20(0x6B175474E89094C44Da98b954EedeAC495271d0F);
+    IERC20 constant LINK = IERC20(0x514910771AF9Ca656af840dff83E8264EcF986CA);
     address user = vm.addr(1);
 
     function setUp() public {
@@ -42,24 +43,11 @@ contract AaveV3Test is Test {
         vm.stopPrank();
     }
 
-    function testSupplySelf() public {
-        uint256 amount = 10000 * 1e18;
-        deal(address(DAI), address(this), amount, true);
-        console.log("DAI contract bal: ", DAI.balanceOf(address(this)) / 1e18);
-
-        DAI.safeTransfer(address(aaveV3), amount);
-        aaveV3.supplySelf(address(DAI), amount);
-
-        (address aToken,) = aaveV3.getReserveData(address(this));
-        console.log("aToken contract balance: ", IERC20(aToken).balanceOf(address(this)) / 1e18);
-        console.log("DAI user balance: ", DAI.balanceOf(address(this)) / 1e18);
-    }
-
     function testWithdraw() public {
         testSupply();
 
         vm.startPrank(user);
-        (address aToken,) = aaveV3.getReserveData(address(DAI));
+        (address aToken,,) = aaveV3.getReserveData(address(DAI));
         uint256 aTokenBalance = IERC20(aToken).balanceOf(user);
         console.log("aToken user balance: ", aTokenBalance);
         console.log("DAI user balance: ", DAI.balanceOf(user));
@@ -74,8 +62,16 @@ contract AaveV3Test is Test {
 
     function testBorrow() public {
         testSupply();
-        uint256 debtAmount = 2 * 1e18;
-        aaveV3.borrow(0x514910771AF9Ca656af840dff83E8264EcF986CA, debtAmount);
+        uint256 debtAmount = 1 * 1e18;
+
+        vm.startPrank(user);
+        (,address  stableDebtTokenAddress,address variableDebtTokenAddress) = aaveV3.getReserveData(address(DAI));
+        ICreditDelegationToken(stableDebtTokenAddress).approveDelegation(address(aaveV3), debtAmount);
+        ICreditDelegationToken(variableDebtTokenAddress).approveDelegation(address(aaveV3), debtAmount);
+        assertEq(ICreditDelegationToken(variableDebtTokenAddress).borrowAllowance(user, address(aaveV3)), debtAmount);
+
+        aaveV3.borrow(address(LINK), debtAmount, user);
+        vm.stopPrank();
     }
 
     // function testBorrow() public {
