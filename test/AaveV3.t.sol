@@ -14,9 +14,15 @@ import "aaveV3-core/contracts/dependencies/openzeppelin/contracts/SafeERC20.sol"
 contract AaveV3Test is Test {
     using SafeERC20 for IERC20;
 
+    PoolAddressesProviderRegistry constant providerRegistry =
+        PoolAddressesProviderRegistry(0xbaA999AC55EAce41CcAE355c77809e68Bb345170);
+
+    address[] addressProvider = providerRegistry.getAddressesProvidersList();
+    PoolAddressesProvider provider = PoolAddressesProvider(addressProvider[0]);
+    Pool pool = Pool(provider.getPool());
+
     AaveV3 public aaveV3;
     IERC20 constant DAI = IERC20(0x6B175474E89094C44Da98b954EedeAC495271d0F);
-    IERC20 constant LINK = IERC20(0x514910771AF9Ca656af840dff83E8264EcF986CA);
     address user = vm.addr(1);
 
     function setUp() public {
@@ -61,87 +67,96 @@ contract AaveV3Test is Test {
     }
 
     function testBorrow() public {
+        uint256 amountDeposited = 10000 * 1e18;
         testSupply();
-        uint256 debtAmount = 1 * 1e18;
+
+        console.log("******borrow*******");
+        uint256 debtAmount = 500 * 1e18;
 
         vm.startPrank(user);
-        (,address  stableDebtTokenAddress,address variableDebtTokenAddress) = aaveV3.getReserveData(address(DAI));
-        ICreditDelegationToken(stableDebtTokenAddress).approveDelegation(address(aaveV3), debtAmount);
+        (address aToken,, address variableDebtTokenAddress) = aaveV3.getReserveData(address(DAI));
+        assertEq(IERC20(aToken).balanceOf(user), amountDeposited);
+        assertEq(IERC20(variableDebtTokenAddress).balanceOf(user), 0);
+
+        (, uint256 totalDebtBase, uint256 availableBorrowsBase,) = aaveV3.getUserAccountData(user);
+        console.log("initial totalDebtBase: ", totalDebtBase);
+        console.log("initial availableBorrowsBase: ", availableBorrowsBase);
+
         ICreditDelegationToken(variableDebtTokenAddress).approveDelegation(address(aaveV3), debtAmount);
         assertEq(ICreditDelegationToken(variableDebtTokenAddress).borrowAllowance(user, address(aaveV3)), debtAmount);
 
-        aaveV3.borrow(address(LINK), debtAmount, user);
+        aaveV3.borrow(address(DAI), debtAmount, user);
+
+        (, uint256 totalDebtBase_,,) = aaveV3.getUserAccountData(user);
+        console.log("final totalDebtBase: ", totalDebtBase_);
+
+        assertEq(IERC20(variableDebtTokenAddress).balanceOf(user), debtAmount);
+        assertEq(DAI.balanceOf(address(aaveV3)), debtAmount);
+
         vm.stopPrank();
     }
 
-    // function testBorrow() public {
-    //     uint256 amountDeposited = 10000 * 1e18;
-    //     testDeposit();
-    //     console.log("******borrow*******");
+    function testRepay() public {
+        testBorrow();
 
-    //     uint256 debtToken = 50 * 1e18;
+        console.log("******repayment*******");
+        uint256 debtAmount = 500 * 1e18;
+        uint256 repayAmount = 501 * 1e18;
 
-    //     vm.startPrank(user);
-    //     (address aToken, address variableDebtTokenAddress) = aaveV3.getReserveData(address(DAI));
-    //     assertEq(IERC20(aToken).balanceOf(user), amountDeposited);
-    //     assertEq(IERC20(variableDebtTokenAddress).balanceOf(user), 0);
+        vm.startPrank(user);
+        (,, address variableDebtTokenAddress) = aaveV3.getReserveData(address(DAI));
 
-    //     (uint256 totalCollateralETH,uint256  availableBorrowsETH, uint256 totalDebtETH,) = aaveV3.getUserAccountData(user);
-    //     console.log("initital totalCollateralETH: ", totalCollateralETH);
-    //     console.log("initital availableBorrowsETH: ", availableBorrowsETH);
-    //     console.log("initital totalDebtETH: ", totalDebtETH);
+        (, uint256 totalDebtBase,,) = aaveV3.getUserAccountData(user);
+        console.log("inital totalDebtBase: ", totalDebtBase);
 
-    //     LendingPoolAddressesProviderRegistry  providerRegistry =
-    //     LendingPoolAddressesProviderRegistry(0x52D306e36E3B6B02c153d0266ff0f85d18BCD413);
+        assertEq(IERC20(variableDebtTokenAddress).balanceOf(user), debtAmount);
+        aaveV3.repay(address(DAI), repayAmount, user);
 
-    //     address[] memory addressProvider = providerRegistry.getAddressesProvidersList();
-    //     LendingPoolAddressesProvider  provider = LendingPoolAddressesProvider(addressProvider[0]);
-    //     LendingPool pool = LendingPool(provider.getLendingPool());
+        (, uint256 totalDebtBase_,,) = aaveV3.getUserAccountData(user);
 
-    //     pool.setUserUseReserveAsCollateral(address(DAI), true);
+        console.log("final totalDebtBase: ", totalDebtBase_);
+        assertEq(IERC20(variableDebtTokenAddress).balanceOf(user), 0);
 
-    //     IERC20(aToken).safeApprove(address(aaveV3), amountDeposited);
+        vm.stopPrank();
+    }
 
-    //     // ICreditDelegationToken(variableDebtTokenAddress).approveDelegation(address(aaveV3), debtToken);
-    //     // assertEq(ICreditDelegationToken(variableDebtTokenAddress).borrowAllowance(user, address(aaveV3)), debtToken);
+    function testRepayWithATokens() public {
+        testBorrow();
+        uint256 amountDeposited = 10000 * 1e18;
+        uint256 debtAmount = 500 * 1e18;
+        uint256 repayAmount = 500 * 1e18;
 
-    //     aaveV3.borrow(aToken, amountDeposited,address(DAI), debtToken, user);
+        console.log("******repayment*******");
+        vm.startPrank(user);
+        (address aToken,, address variableDebtTokenAddress) = aaveV3.getReserveData(address(DAI));
+        uint256 aTokenBalance = IERC20(aToken).balanceOf(user);
+        assertEq(aTokenBalance, amountDeposited);
+        assertEq(IERC20(variableDebtTokenAddress).balanceOf(user), debtAmount);
 
-    //     (,, uint256 totalDebtETH_,) = aaveV3.getUserAccountData(user);
-    //     console.log("final totalDebtETH: ", totalDebtETH_);
+        (, uint256 totalDebtBase,,) = aaveV3.getUserAccountData(user);
+        console.log("inital totalDebtBase: ", totalDebtBase);
 
-    //     assertEq(IERC20(variableDebtTokenAddress).balanceOf(user), debtToken);
-    //     assertEq(DAI.balanceOf(address(aaveV3)), debtToken);
+        uint256 interestRateMode = 2;
+        pool.repayWithATokens(address(DAI), repayAmount, interestRateMode);
 
-    //     vm.stopPrank();
-    // }
+        (, uint256 totalDebtBase_,,) = aaveV3.getUserAccountData(user);
+        assertEq(IERC20(aToken).balanceOf(user), aTokenBalance - repayAmount);
+        assertEq(IERC20(variableDebtTokenAddress).balanceOf(user), 0);
+        console.log("final totalDebtBase: ", totalDebtBase_);
+        vm.stopPrank();
+    }
 
-    // function testRepay() public {
-    //     testBorrow();
+    function testFailLiquidationCall() public {
+        testBorrow();
 
-    //     console.log("******repayment*******");
-    //     uint256 debtAmount = 50 * 1e18;
-    //     uint256 repayAmount = 51 * 1e18;
-    //     vm.startPrank(user);
-    //     (, address variableDebtTokenAddress) = aaveV3.getReserveData(address(DAI));
+        address liquidator = vm.addr(2);
+        uint256 amount = 10000 * 1e18;
+        deal(address(DAI), liquidator, amount, true);
+        assertEq(DAI.balanceOf(liquidator), amount);
 
-    //     (,, uint256 totalDebtETH,) = aaveV3.getUserAccountData(user);
-    //     console.log("inital totalDebtETH: ", totalDebtETH);
-
-    //     assertEq(IERC20(variableDebtTokenAddress).balanceOf(user), debtAmount);
-    //     aaveV3.repay(address(DAI), repayAmount, user);
-
-    //     (,, uint256 totalDebtETH_,) = aaveV3.getUserAccountData(user);
-    //     console.log("final totalDebtETH: ", totalDebtETH_);
-    //     assertEq(IERC20(variableDebtTokenAddress).balanceOf(user), 0);
-
-    //     vm.stopPrank();
-    // }
-
-    // function testFailLiquidationCall() public {
-    //     testBorrow();
-    //     vm.startPrank(user);
-    //     aaveV3.liquidationCall(address(DAI), address(DAI), user);
-    //     vm.stopPrank();
-    // }
+        vm.startPrank(liquidator);
+        DAI.safeApprove(address(aaveV3), amount);
+        aaveV3.liquidationCall(address(DAI), address(DAI), user, liquidator, amount);
+        vm.stopPrank();
+    }
 }

@@ -24,15 +24,15 @@ contract AaveV3 {
         pool = Pool(provider.getPool());
     }
 
-     // function getUserAccountData(address _user) external view returns (uint256, uint256, uint256, uint256) {
-    //     (uint256 totalCollateralETH, uint256 totalDebtETH, uint256 availableBorrowsETH,,, uint256 healthFactor) =
-    //         pool.getUserAccountData(_user);
-    //     return (totalCollateralETH, availableBorrowsETH, totalDebtETH, healthFactor);
-    // }
+    function getUserAccountData(address _user) external view returns (uint256, uint256, uint256, uint256) {
+        (uint256 totalCollateralBase, uint256 totalDebtBase, uint256 availableBorrowsBase,,, uint256 healthFactor) =
+            pool.getUserAccountData(_user);
+        return (totalCollateralBase, totalDebtBase, availableBorrowsBase, healthFactor);
+    }
 
-    function getReserveData(address _asset) public view returns (address, address,address) {
+    function getReserveData(address _asset) public view returns (address, address, address) {
         DataTypes.ReserveData memory reserveData = pool.getReserveData(_asset);
-        return (reserveData.aTokenAddress, reserveData.stableDebtTokenAddress,reserveData.variableDebtTokenAddress);
+        return (reserveData.aTokenAddress, reserveData.stableDebtTokenAddress, reserveData.variableDebtTokenAddress);
     }
 
     function supply(address _asset, uint256 _amount, address _behalfOf) external {
@@ -55,25 +55,22 @@ contract AaveV3 {
         pool.borrow(_asset, _amount, interestRateMode, referralCode, _behalfOf);
     }
 
-    // function borrow(address aToken, uint256 atokensDeposited,address _asset, uint256 _amount, address _behalfOf) external {
-    //     uint256 interestRateMode = 2;
-    //     uint16 refCode = 0;
+    function repay(address _asset, uint256 _amount, address _behalfOf) external {
+        uint256 rateMode = 2;
+        IERC20(_asset).safeApprove(address(pool), _amount);
+        pool.repay(_asset, _amount, rateMode, _behalfOf);
+    }
 
-    //     IERC20(aToken).safeTransferFrom(_behalfOf, address(this), atokensDeposited);
-    //     IERC20(aToken).safeApprove( address(pool), atokensDeposited);
-
-    //     pool.borrow(_asset, _amount, interestRateMode, refCode, _behalfOf);
-    // }
-
-    // function repay(address _asset, uint256 _amount, address _behalfOf) external {
-    //     uint256 rateMode = 2;
-    //     IERC20(_asset).safeApprove(address(pool), _amount);
-    //     pool.repay(_asset, _amount, rateMode, _behalfOf);
-    // }
-
-    // function liquidationCall(address _collateralAsset, address _debtAsset, address _user) external {
-    //     uint256 _debtToCover = uint256(-1);
-    //     bool _receiveAToken = false;
-    //     pool.liquidationCall(_collateralAsset, _debtAsset, _user, _debtToCover, _receiveAToken);
-    // }
+    function liquidationCall(
+        address _collateralAsset,
+        address _debtAsset,
+        address _user,
+        address _liquidator,
+        uint256 _debtToCover
+    ) external {
+        bool _receiveAToken = false;
+        IERC20(_collateralAsset).safeTransferFrom(_liquidator, address(this), _debtToCover);
+        IERC20(_collateralAsset).safeApprove(address(pool), _debtToCover);
+        pool.liquidationCall(_collateralAsset, _debtAsset, _user, _debtToCover, _receiveAToken);
+    }
 }
