@@ -15,6 +15,38 @@ import "aaveV3-periphery/contracts/rewards/RewardsController.sol";
 contract AaveV3Test is Test {
     using SafeERC20 for IERC20;
 
+    bytes32 public DOMAIN_SEPARATOR;
+    bytes public constant EIP712_REVISION = bytes("1");
+    bytes32 internal constant EIP712_DOMAIN =
+        keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)");
+
+    bytes32 public constant PERMIT_TYPEHASH =
+        keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)");
+
+    function calculateDomainSeparator(string memory _name) private view returns (bytes32) {
+        return keccak256(
+            abi.encode(EIP712_DOMAIN, keccak256(bytes(_name)), keccak256(EIP712_REVISION), block.chainid, address(this))
+        );
+    }
+
+    struct Permit {
+        address owner;
+        address spender;
+        uint256 value;
+        uint256 nonce;
+        uint256 deadline;
+    }
+
+    function getStructHash(Permit memory _permit) internal pure returns (bytes32) {
+        return keccak256(
+            abi.encode(PERMIT_TYPEHASH, _permit.owner, _permit.spender, _permit.value, _permit.nonce, _permit.deadline)
+        );
+    }
+
+    function getTypedDataHash(Permit memory _permit) public view returns (bytes32) {
+        return keccak256(abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR, getStructHash(_permit)));
+    }
+
     RewardsController constant rewards = RewardsController(0x8164Cc65827dcFe994AB23944CBC90e0aa80bFcb);
 
     PoolAddressesProviderRegistry constant providerRegistry =
@@ -30,6 +62,7 @@ contract AaveV3Test is Test {
 
     function setUp() public {
         aaveV3 = new AaveV3();
+        DOMAIN_SEPARATOR = calculateDomainSeparator(DAI.name());
     }
 
     function testGetProvider() public view {
@@ -177,9 +210,33 @@ contract AaveV3Test is Test {
         assets[0] = aToken;
 
         vm.startPrank(user);
-        (address[] memory rewardsList, uint256[] memory claimedAmounts)= rewards.claimAllRewardsToSelf(assets);
-        console.log("rewardsList length: ",rewardsList.length);
-        console.log("claimedAmounts length: ",claimedAmounts.length);
+        (address[] memory rewardsList, uint256[] memory claimedAmounts) = rewards.claimAllRewardsToSelf(assets);
+        console.log("rewardsList length: ", rewardsList.length);
+        console.log("claimedAmounts length: ", claimedAmounts.length);
+        vm.stopPrank();
+    }
+
+    function testSupplyWithPermit() public {
+        uint256 signerPk = 123;
+        address signer = vm.addr(signerPk);
+        uint256 amount = 1000 * 1e18;
+        deal(address(DAI), signer, amount, true);
+
+        Permit memory _permit = Permit({
+            owner: signer,
+            spender: address(aaveV3),
+            value: amount,
+            nonce: DAI.nonces(address(signer)),
+            deadline: block.timestamp + 60
+        });
+
+        vm.startPrank(signer);
+        bytes32 digest = getTypedDataHash(_permit);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(signerPk, digest);
+        vm.stopPrank();
+
+        vm.startPrank(user);
+        aaveV3.supplyWithPermit(address(DAI), amount, signer, 0, block.timestamp + 60, v, r, s);
         vm.stopPrank();
     }
 }
