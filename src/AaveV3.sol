@@ -7,6 +7,7 @@ import "aaveV3-core/contracts/protocol/pool/Pool.sol";
 import "aaveV3-core/contracts/dependencies/openzeppelin/contracts/IERC20.sol";
 import "aaveV3-core/contracts/dependencies/openzeppelin/contracts/SafeERC20.sol";
 import {DataTypes} from "aaveV3-core/contracts/protocol/libraries/types/DataTypes.sol";
+import "aaveV3-periphery/contracts/rewards/RewardsController.sol";
 
 import "forge-std/console.sol";
 
@@ -17,6 +18,8 @@ contract AaveV3 {
         PoolAddressesProviderRegistry(0xbaA999AC55EAce41CcAE355c77809e68Bb345170);
     PoolAddressesProvider public provider;
     Pool public immutable pool;
+
+    RewardsController constant rewards = RewardsController(0x8164Cc65827dcFe994AB23944CBC90e0aa80bFcb);
 
     constructor() {
         address[] memory addressProvider = providerRegistry.getAddressesProvidersList();
@@ -72,5 +75,9 @@ contract AaveV3 {
         IERC20(_collateralAsset).safeTransferFrom(_liquidator, address(this), _debtToCover);
         IERC20(_collateralAsset).safeApprove(address(pool), _debtToCover);
         pool.liquidationCall(_collateralAsset, _debtAsset, _user, _debtToCover, _receiveAToken);
+    }
+
+    function getRewardsByAsset(address _asset) external view returns (address[] memory rewardList) {
+        rewardList = rewards.getRewardsByAsset(_asset);
     }
 }

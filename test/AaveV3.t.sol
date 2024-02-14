@@ -10,9 +10,12 @@ import "aaveV3-core/contracts/protocol/pool/Pool.sol";
 import "aave-v3-core/contracts/interfaces/ICreditDelegationToken.sol";
 import "aaveV3-core/contracts/dependencies/openzeppelin/contracts/IERC20.sol";
 import "aaveV3-core/contracts/dependencies/openzeppelin/contracts/SafeERC20.sol";
+import "aaveV3-periphery/contracts/rewards/RewardsController.sol";
 
 contract AaveV3Test is Test {
     using SafeERC20 for IERC20;
+
+    RewardsController constant rewards = RewardsController(0x8164Cc65827dcFe994AB23944CBC90e0aa80bFcb);
 
     PoolAddressesProviderRegistry constant providerRegistry =
         PoolAddressesProviderRegistry(0xbaA999AC55EAce41CcAE355c77809e68Bb345170);
@@ -157,6 +160,26 @@ contract AaveV3Test is Test {
         vm.startPrank(liquidator);
         DAI.safeApprove(address(aaveV3), amount);
         aaveV3.liquidationCall(address(DAI), address(DAI), user, liquidator, amount);
+        vm.stopPrank();
+    }
+
+    function testGetRewardsByAsset() public view {
+        (address aToken,,) = aaveV3.getReserveData(address(DAI));
+        address[] memory rewardList = aaveV3.getRewardsByAsset(aToken);
+        console.log("length: ", rewardList.length);
+    }
+
+    function testClaimAllRewardsToSelf() public {
+        testSupply();
+
+        (address aToken,,) = aaveV3.getReserveData(address(DAI));
+        address[] memory assets = new address[](1);
+        assets[0] = aToken;
+
+        vm.startPrank(user);
+        (address[] memory rewardsList, uint256[] memory claimedAmounts)= rewards.claimAllRewardsToSelf(assets);
+        console.log("rewardsList length: ",rewardsList.length);
+        console.log("claimedAmounts length: ",claimedAmounts.length);
         vm.stopPrank();
     }
 }
